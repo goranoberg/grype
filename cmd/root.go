@@ -102,11 +102,16 @@ func setRootFlags(flags *pflag.FlagSet) {
 		fmt.Sprintf("report output formatter, formats=%v", presenter.AvailableFormats),
 	)
 
+	flags.StringP(
+		"file", "f", "",
+		"file to write the report output to (default is STDOUT)",
+	)
+
 	flags.StringP("template", "t", "", "specify the path to a Go template file ("+
 		"requires 'template' output to be selected)")
 
 	flags.StringP(
-		"fail-on", "f", "",
+		"fail-on", "", "",
 		fmt.Sprintf("set the return code to 1 if a vulnerability is found with a severity >= the given severity, options=%v", vulnerability.AllSeverities),
 	)
 }
@@ -117,6 +122,10 @@ func bindRootConfigOptions(flags *pflag.FlagSet) error {
 	}
 
 	if err := viper.BindPFlag("output", flags.Lookup("output")); err != nil {
+		return err
+	}
+
+	if err := viper.BindPFlag("file", flags.Lookup("file")); err != nil {
 		return err
 	}
 
@@ -137,11 +146,18 @@ func rootExec(_ *cobra.Command, args []string) error {
 		userInput = args[0]
 	}
 
+	reporter, closer, err := reportWriter()
+	defer closer()
+
+	if err != nil {
+		return err
+	}
+
 	return eventLoop(
 		startWorker(userInput, appConfig.FailOnSeverity),
 		setupSignals(),
 		eventSubscription,
-		ui.Select(appConfig.CliOptions.Verbosity > 0, appConfig.Quiet),
+		ui.Select(appConfig.CliOptions.Verbosity > 0, appConfig.Quiet, reporter),
 		stereoscope.Cleanup,
 	)
 }
